@@ -1,0 +1,309 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% University/School Laboratory Report
+% LaTeX Template
+% Version 3.1 (25/3/14)
+%
+% This template has been downloaded from:
+% http://www.LaTeXTemplates.com
+%
+% Original author:
+% Linux and Unix Users Group at Virginia Tech Wiki 
+% (https://vtluug.org/wiki/Example_LaTeX_chem_lab_report)
+%
+% License:
+% CC BY-NC-SA 3.0 (http://creativecommons.org/licenses/by-nc-sa/3.0/)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%----------------------------------------------------------------------------------------
+%	PACKAGES AND DOCUMENT CONFIGURATIONS
+%----------------------------------------------------------------------------------------
+
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{appendix}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx} % Required for the inclusion of images
+\usepackage{natbib} % Required to change bibliography style to APA
+\usepackage{amsmath} % Required for some math elements 
+\usepackage{caption}
+\usepackage{tikz}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{import}
+\usetikzlibrary{arrows, automata, positioning}
+\usepackage[italian,english]{babel}
+
+\setlength\parindent{0pt} % Removes all indentation from paragraphs
+
+%\renewcommand{\labelenumi}{\alph{enumi}.} % Make numbering in the enumerate environment by letter rather than number (e.g. section 6)
+
+%\usepackage{times} % Uncomment to use the Times New Roman font
+
+%----------------------------------------------------------------------------------------
+%	DOCUMENT INFORMATION
+%----------------------------------------------------------------------------------------
+
+\title{Prova Finale di Reti Logiche} % Title
+
+\author{Arturo Benedetti} % Author name
+
+\date{\today} % Date for the report
+
+\begin{document}
+\selectlanguage{italian}
+
+\maketitle % Insert the title, author and date
+
+\begin{center}
+\begin{tabular}{l r}
+Professore: & William Fornaciari \\
+Codice persona - Matricola: &  - 
+\end{tabular}
+\end{center}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+% If you wish to include an abstract, uncomment the lines below
+% \begin{abstract}
+% Abstract text
+% \end{abstract}
+
+%----------------------------------------------------------------------------------------
+%	SECTION 1
+%----------------------------------------------------------------------------------------
+
+\section{Introduzione}
+La Prova Finale di Reti Logiche chiede di implementare un modulo HW (descritto in VHDL) che si interfacci con una memoria e che segua una particolare specifica.
+
+\subsection{Specifica}
+\label{Specifica}
+Data una sequenza continua di W parole, ognuna di 8 bit, il modulo deve restituire una sequenza continua di Z parole, ognuna di 8 bit, data dall'applicazione dell'algoritmo di Viterbi sull'ingresso. La sequenza in uscita Z sarà lunga il doppio di quella in ingresso W, dato che per ogni bit in ingresso ne verranno generati due (vedere \ref{convolutore}).
+\\
+Il modulo dovrà quindi:
+\begin{enumerate}
+    \item Leggere da una memoria RAM i dati da computare
+    \begin{enumerate}
+        \item Dall'indirizzo 0x0 il numero di parole W in input (max. 255)
+        \item A partire dall'indirizzo 0x1 la sequenza W
+    \end{enumerate}
+    \item Serializzare la sequenza in ingresso
+    \item Applicare il codice convoluzionale fornito (sezione \ref{convolutore}) al flusso (ogni bit viene codificato con 2 bit)
+    \item Concatenare i bit ottenuti per ottenere il flusso Y
+    \item Parallelizzare, su 8 bit, il flusso continuo Y, per ottenere la sequenza d'uscita Z
+    \item Scrivere il risultato nella memoria RAM 8 bit alla volta, a partire dall'indirizzo 1000
+\end{enumerate} 
+
+Il progetto deve funzionare con un clock minore di 100ns.
+
+\subsection{Memoria}
+La memoria è di tipo sincrono: ciò significa che, durante un ciclo di lettura, il dato viene fornito nel ciclo di clock \textbf{successivo} a quello in cui viene fornito l'indirizzo. Nel caso di scrittura, invece, è necessario fornire indirizzo e dato nello stesso ciclo.
+
+\newpage
+
+\subsection{Convolutore}
+\label{convolutore}
+Il convolutore è una macchina sequenziale sincrona con un clock globale ed un segnale di reset, avente il seguente diagramma degli stati:
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width = .8\linewidth]{immagini/convolutore2.jpg}
+    \caption{Convolutore - Algoritmo di Viterbi}
+\end{figure}
+
+\subsection{Esempio}
+Di seguito è riportato un esempio di funzionamento della codifica convoluzionale.\\
+L'input viene analizzato dal convolutore, il quale genera due bit in uscita per ogni bit in ingresso. L'output è formato dalla concatenazione dei bit appena ottenuti.
+Ogni byte in ingresso produce quindi due byte in uscita.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width = .95\linewidth]{immagini/Example1.jpg}
+    \caption{Esempio di codifica convoluzionale}
+\end{figure}
+
+\clearpage
+ 
+%----------------------------------------------------------------------------------------
+%	SECTION 2
+%----------------------------------------------------------------------------------------
+
+\section{Architettura}
+Lo strumento di sintesi utilizzato è Xilinx Vivado Webpack, con target FPGA Artix-7 xc7a200tfbg484-1.
+\\
+Per la realizzazione si è partiti dalla progettazione ad alto livello del sistema (\ref{altolivello}) così da definire il comportamento generale del modulo; si è poi passati alla strutturazione del \textbf{Datapath} (\ref{datapath}) e della relativa \textbf{Macchina a Stati Finiti} (\ref{fsm}), necessari per il controllo del comportamento del sistema. 
+
+\subsection{Ipotesi progettuali}
+\label{ipotesi}
+Il progetto è stato sviluppato sotto le seguenti ipotesi:
+\begin{enumerate}
+    \item Il numero massimo di parole W in ingresso è 255.
+    \item Prima della prima codifica verrà sempre dato il RESET al modulo.
+    \item Una volta portato alto, il segnale START rimarrà in questo stato fino a che il segnale DONE non verrà portato alto.
+    \item La quantità di parole da codificare sarà sempre memorizzata all'indirizzo 0, e l'uscità sarà sempre memorizzata a partire dall'indirizzo 1000.
+\end{enumerate}
+
+\subsection{Descrizione ad alto livello}
+\label{altolivello}
+Da un punto di vista di alto livello, il modulo eseguirà i seguenti passi:
+\\
+Quando un segnale START in ingresso verrà portato ad 1:
+\begin{enumerate}
+    \item Inizializzazione registri
+    \item Lettura della quantità di parole da codificare dall'indirizzo 0 della RAM
+    \item Controllo di aver codificato il numero richiesto di parole, in tal caso si passa al punto \ref{ending}
+    \label{check}
+    \item Lettura della parola da codificare dalla RAM (8 bit)
+    \item Codifica mediante l'utilizzo del codificatore convoluzionale (sezione \ref{convolutore})
+    \item Concatenazione del risultato ottenuto (16 bit risultanti)
+    \item Caricamento del risultato ottenuto in RAM
+    \begin{enumerate}
+        \item Caricamento della parte alta (H) del risultato (bit 15..8)
+        \item Caricamento della parte bassa (L) del risultato (bit 7..0)
+    \end{enumerate}
+    \item Aggiornamento indici per lettura/scrittura memoria
+    \item Torna al punto \ref{check}
+    \item Segnalazione terminazione settando il segnale DONE ad alto.
+    \label{ending}
+    \item Attesa dell'abbassamento del segnale START
+    \item Abbassamento del segnale DONE
+\end{enumerate}
+
+\subsection{Datapath}
+\label{datapath}
+Nel datapath prevediamo l'utilizzo di 4 registri primari (utili al processo di codifica) e 2 secondari (per il salvataggio degli indici di input ed output):
+\\\\
+Primari:
+\begin{itemize}
+    \item \texttt{REG\_NUM}: Registro che conterrà il numero di parole da codificare (8 bit, dato che il valore massimo è 255)
+    \item \texttt{REG\_INPUT}: Registro che conterrà la parola da codificare (8 bit)
+    \item \texttt{REG\_OUTPUT}: Registro che conterrà l'output derivante dalla codifica (16 bit). Inizializzato a 0
+    \item \texttt{FSM\_STATE}: Registro che conterrà lo stato raggiunto dal codificatore convoluzionale alla fine della codifica (2 bit, dato che il convolutore ha 4 stati). Inizializzato a 0 (corrispondente allo stato di RESET del codificatore)
+\end{itemize}
+
+Particolarmente importante risulta essere la bufferizzazione del numero di parole da codificare in \texttt{reg\_num}: ciò evita che per ogni lettura di tale valore si debba accedere alla memoria RAM, riducendo sensibilmente i tempi di elaborazione e quindi permettendo di lavorare con un periodo di clock minore.\\
+
+Secondari:
+\begin{itemize}
+    \item \texttt{REG\_ININDEX}: Registro contenente l'indice a cui leggere l'input, utilizzato anche per sapere quante parole sono state codificate (fig. \ref{fig:inputIndexCounter})
+    \item \texttt{REG\_OUTINDEX}: Registro contenente l'indice a cui scrivere l'output (fig. \ref{fig:outputIndexCounter}).\\
+    Il registro è inizializzato a 1000, in quanto l'output deve essere scritto a partire da quell'indirizzo.
+\end{itemize}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width = \linewidth]{immagini/datapath_new.jpg}
+    \caption{Datapath interno}
+    \label{fig:datapath}
+\end{figure}
+
+Ad ogni registro è associato un segnale di load, il quale servirà per sapere se lo stream in ingresso al registro stesso debba essere caricato o meno.
+\\
+Il blocco FSM modella la presenza del convolutore. Quest'ultimo riceve in ingresso il contenuto di \texttt{REG\_INPUT} e lo codifica, generando un segnale in output che verrà salvato nel registro \texttt{REG\_OUTPUT}. 
+\\
+Il convolutore ha anche accesso al registro \texttt{FSM\_STATE}, in modo tale da poter salvare lo stato raggiunto a fine codifica (di ogni parola) e recuperare lo stato raggiunto precedentemente all'inizio di ogni codifica successiva.
+\\
+Sono stati utilizzati 4 mux: 
+\begin{itemize}
+    \item 3 sono utilizzati per gestire l'inizializzazione del registro che precedono
+    \item 1 è utilizzato per selezionare quale sezione dell'output verrà salvata in memoria, come spiegato in seguito
+\end{itemize}
+Ad ogni mux è associato il relativo segnale di selezione, controllato dalla FSM.
+\\
+Vista la dimensione del registro \texttt{REG\_OUTPUT} (16 bit), la scrittura del risultato in RAM è stata spezzata in due, scegliendo di caricare separatamente prima i bit da 15 a 8 (H), poi i restanti da 7 a 0 (L). Si è deciso di modellare tale meccanismo mediante l'utilizzo di un mux avente in ingresso le due "sezioni" dell'output (High - H e Low - L), il quale verrà controllato dalla FSM.\\
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.53\textwidth}
+        \centering
+        \includegraphics[width = \linewidth]{immagini/reg_inIndex.jpg}
+        \caption{Contatore inputIndex}
+        \label{fig:inputIndexCounter}
+    \end{minipage}%
+    \begin{minipage}{0.47\textwidth}
+        \centering
+        \includegraphics[width = \linewidth]{immagini/reg_outIndex.jpg}
+        \caption{Contatore outputIndex}
+        \label{fig:outputIndexCounter}
+    \end{minipage}
+    \label{fig:my_label}
+\end{figure}
+
+Si è deciso di utilizzare due contatori separati per gli indici di input ed output per mantenere separati i due sottosistemi (figure \ref{fig:inputIndexCounter} e \ref{fig:outputIndexCounter}), dato che la frequenza delle parole in uscita è doppia rispetto a quella in ingresso. In questo modo si evitano anche una serie di operazioni (un'addizione su 16 bit ed una moltiplicazione per 2) necessarie nel caso si fosse utilizzato un solo contatore per l'indice di input per poter ricavare gli indici di output corrispondenti.
+
+\newpage
+\subsection{Macchina a Stati Finiti}
+\label{fsm}
+La \textbf{Macchina a Stati Finiti} (FSM) è il circuito che si occupa della gestione dello stato di computazione e dei segnali interni del modulo.\\
+Di seguito è riportata una descrizione degli stati che la compongono:
+
+\begin{itemize}
+    \item \texttt{IDLE}: Stato di Idle, la FSM rimarrà in questo stato fino a quando non sarà ricevuto il segnale di START (\texttt{i\_start} = 1). Corrisponde allo stato di reset.
+    \item \texttt{SET\_READ\_ADDR}: Stato in cui viene preparata la lettura del numero di byte da codificare dall'indirizzo 0 della memoria RAM. Vengono inoltre inizializzati i registri \texttt{inIndex}, \texttt{outIndex}, \texttt{fsm\_state} mediante il settaggio degli appositi segnali, come indicato in figura \ref{fig:fsm}.
+    \item \texttt{FETCH\_READ\_ADDR}: Stato in cui viene effettuata la lettura preparata al punto precedente, il risultato è salvato all'interno del registro \texttt{reg\_num}.
+    \item \texttt{CHECK\_END}: Stato in cui si controlla di aver codificato il numero di parole richiesto. Ciò viene effettuato confrontando il contenuto dei registri \texttt{reg\_num} e \texttt{reg\_inIndex}: se i due valori corrispondono viene settato ad \texttt{1} il segnale \texttt{o\_end} (figura \ref{fig:inputIndexCounter}), che altrimenti è settato a \texttt{0}. Il controllo viene effettuato subito dopo aver letto il numero di parole da codificare, ciò evita che si prosegua nella codifica nel caso il numero di byte da codificare sia 0.
+    \item \texttt{SET\_INPUT\_INDEX}: Stato che si occupa dell'incremento dell'indice dell'input.
+    \item \texttt{SET\_INPUT\_ADDR}: Stato che prepara la lettura da memoria RAM della parola in input. L'indirizzo di lettura corrisponde a quello salvato nel registro \texttt{reg\_inIndex}, aggiornato nel precedente stato.
+    \item \texttt{READ\_INPUT}: Stato in cui viene effettuata la lettura preparata al punto precedente, il risultato è salvato all'interno del registro \texttt{reg\_input}.
+    \item \texttt{COMPUTE}: Stato che si occupa dell'effettiva codifica convoluzionale dell'input. L'input viene analizzato un bit alla volta, da \texttt{MSB} ad \texttt{LSB}. Per ogni bit in ingresso ne vengono generati due in uscita secondo la codifica mostrata in \ref{convolutore}, i quali vengono poi concatenati in un unico vettore di 16 bit. Tale vettore è salvato nel registro \texttt{reg\_output}\text. Alla fine della codifica viene salvato lo stato raggiunto dal codificatore convoluzionale nel registro \texttt{fsm\_state}, mediante il settaggio dei relativi segnali di controllo.
+    \item \texttt{WRITE\_RESULT\_H}: Stato che si occupa della scrittura della parte alta (H - High) del risultato (bit 15..8) in memoria RAM. Lo stato si occupa anche dell'incremento del contatore dell'indice dell'output (avendo appena effettuato una scrittura).
+    \item \texttt{WRITE\_RESULT\_L}: Stato che si occupa della scrittura della parte bassa (L - Low) del risultato (bit 7..0) in memoria RAM. Lo stato si occupa anche dell'incremento del contatore dell'indice dell'output (avendo appena effettuato una scrittura).
+    \item \texttt{NOTIFY\_END}: Stato raggiunto in seguito ad aver completato la codifica del flusso W in ingresso. Viene settato ad alto il segnale \texttt{o\_done} (DONE), ed atteso l'abbassamento del segnale \texttt{i\_start}, come da specifica.
+    \item \texttt{ENDING}: Stato che si occupa dell'abbassamento del segnale \texttt{o\_done}, completando il ciclo di esecuzione e riportando la FSM allo stato di \texttt{IDLE}.
+\end{itemize}
+
+Di seguito è riportato il diagramma degli stati della FSM
+
+\newpage
+\begin{figure}[H]
+    \centering
+    \includegraphics[width = .88\paperwidth, angle = 90]{immagini/fsm_new.jpg}
+    \caption{Diagramma degli stati della FSM}
+    \label{fig:fsm}
+\end{figure}
+\newpage
+
+%----------------------------------------------------------------------------------------
+%	SECTION 3
+%----------------------------------------------------------------------------------------
+
+\section{Testing}
+La fase di testing è stata effettuata sia utilizzando il testbench di esempio fornito, sia generando un elevato numero di test casuali, sia utilizzando testbench che mirassero a testare eventuali corner cases.\\
+Per il testing di casi "standard" è stato utilizzato un generatore di testcases, grazie al quale sono stati testati oltre 100\,000 casi, tutti eseguiti con successo.
+
+\subsection{Corner cases}
+Sono stati individuati i seguenti corner case notevoli, per i quali sono stati preparati testbench specifici:
+
+\begin{itemize}
+    \item Sequenza in ingresso minima, \texttt{0}: questo caso controlla che il modulo non proceda erroneamente con la codifica nel caso non ci sia nulla da codificare
+    \item Sequenza in ingresso massima, \texttt{255}: questo caso controlla che il modulo sia in grado di codificare correttamente la dimensione massima stabilita di parole W
+    \item Presenza di flussi successivi: questo caso controlla che il modulo sia in grado di effettuare codifiche di sequenze successive
+    \begin{itemize}
+        \item Con reset tra una codifica e l'altra
+        \item Senza reset tra una codifica e l'altra
+    \end{itemize}
+    \item Reset durante la codifica: questo caso controlla che il modulo sia in grado di funzionare nel caso sia imposto un reset in un momento qualsiasi (seguito da un'eventuale nuova codifica), ad esempio se si vuole effettuare una codifica senza dover attendere il risultato di quella precedente (che verrà però sovrascritta)
+\end{itemize}
+
+In tutti questi casi il modulo si è comportato correttamente, completando con successo la codifica richiesta sia in simulazione behavioural che in simulazione functional post-synthesis.
+
+\subsection{Report di Sintesi}
+Analizzando i report post sintesi sui componenti utilizzati e sul timing, si evince che il modulo rispetta i vincoli imposti, in particolare si può notare l'assenza di Latch.
+
+\begin{itemize}
+    \item \texttt{Utilization:} Il modulo è stato sintetizzato utilizzando 62 registri come Flip Flop (0.02\% del totale), e 0 registri come Latch
+    \item \texttt{Timing:} Lo slack è di 97.135 $\eta$s (post \texttt{opt\_design}), ciò significa che la parte combinatoria richiede solamente $\sim$3 $\eta$s. Il modulo è quindi in grado di funzionare correttamente anche a fronte di una riduzione del clock del 97\%, funzionando ad una frequenza di quasi 350 MHz.
+\end{itemize}
+
+
+%----------------------------------------------------------------------------------------
+%	SECTION 4
+%----------------------------------------------------------------------------------------
+
+\section{Conclusioni}
+Il componente realizzato è in grado di interfacciarsi con la memoria e seguire la specifica richiesta, codificando correttamente sequenze di bit utilizzando il convolutore specificato (sotto le ipotesi a \ref{ipotesi}) e salvandone il risultato in memoria.\\
+Il modulo è stato sottoposto ad un elevato numero di test, che ne hanno comprovato il corretto funzionamento.\\
+
+\end{document}
